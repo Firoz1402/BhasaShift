@@ -1,0 +1,12 @@
+flask>=2.0.0
+typing_extensions>=4.5.0
+sentencepiece>=0.1.99
+sacremoses
+numpy
+Pillow
+requests
+sacrebleu
+evaluate 
+datasets
+accelerate
+diffusers
