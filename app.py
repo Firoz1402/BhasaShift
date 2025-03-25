@@ -5,7 +5,7 @@ from flask import Flask, request, send_file
 from PIL import Image
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from diffusers import StableDiffusionPipeline
-
+from diffusers.utils import logging
 app = Flask(__name__)
 
 def translate_assamese_to_english(assamese_text):
@@ -33,26 +33,62 @@ def translate_assamese_to_english(assamese_text):
 
     return english_text
 
+# Configure logging
+logging.set_verbosity_error()
+
 def generate_image_from_text(text):
-    # Load pipeline with memory optimizations
-    pipe = StableDiffusionPipeline.from_pretrained(
-        "runwayml/stable-diffusion-v1-5",
-        revision="fp16",
-        torch_dtype=torch.float16
-    ).to("cuda")
+    model_path = "./models/stable-diffusion-2-1"
     
-    # Enable memory optimizations
-    pipe.enable_attention_slicing()
-    
-    # Generate image
-    image = pipe(text, num_inference_steps=25, guidance_scale=7.5).images[0]
+    try:
+        # Check if FP16 is supported
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA is not available")
+            
+        if not torch.cuda.is_bf16_supported():
+            torch_dtype = torch.float16
+        else:
+            torch_dtype = torch.bfloat16
 
-    # Cleanup
-    del pipe
-    torch.cuda.empty_cache()
-    gc.collect()
+        # Load pipeline with memory optimizations
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_path,
+            torch_dtype=torch_dtype,
+            variant="fp16",
+            safety_checker=None,  # Disable if not needed
+            requires_safety_checker=False,
+            local_files_only=True
+        )
+        
+        # Enable memory optimizations
+        pipe = pipe.to("cuda")
+        pipe.enable_attention_slicing(1)  # Aggressive slicing
+        pipe.enable_sequential_cpu_offload()  # Offload to CPU
+        pipe.enable_model_cpu_offload()  # Additional offloading
+        
+        # Generate with reduced memory footprint
+        generator = torch.Generator(device="cuda").manual_seed(42)
+        image = pipe(
+            prompt=text,
+            num_inference_steps=20,  # Reduced from default 50
+            guidance_scale=7.5,
+            height=384,  # Reduced from 512
+            width=384,
+            generator=generator
+        ).images[0]
 
-    return image
+        return image
+
+    except RuntimeError as e:
+        if 'CUDA out of memory' in str(e):
+            return f"Error: {str(e)}. Try a shorter prompt or reduce complexity."
+        raise
+
+    finally:
+        # Cleanup
+        if 'pipe' in locals():
+            del pipe
+        torch.cuda.empty_cache()
+        gc.collect()
 
 @app.route('/generate/image/assamese', methods=['POST'])
 def handle_request():

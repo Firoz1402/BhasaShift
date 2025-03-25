@@ -3,7 +3,6 @@ services:
     build: .
     ports:
       - "5100:5100"
-    runtime: nvidia
     volumes:
       - huggingface-cache:/root/.cache/huggingface/transformers
     deploy:
