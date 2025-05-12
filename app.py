@@ -118,5 +118,236 @@ def handle_request():
     except Exception as e:
         return f"Error: {str(e)}", 500
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5100, debug=False)
+@app.route('/translate/english-to-assamese-old', methods=['POST'])
+def translate_english_to_assamese():
+    # Get input text
+    data = request.get_json()
+    if not data or 'text' not in data:
+        return "Missing text parameter", 400
+
+    english_text = data['text']
+
+    try:
+        # Load translation components
+        model_path = "./models/Bhasashift-v1/final-model"
+        tokenizer = AutoTokenizer.from_pretrained("./models/Bhasashift-v1/final-model-tokeniser")
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path).to("cuda")
+
+        # Process text
+        inputs = tokenizer(
+            english_text,
+            max_length=256,
+            truncation=True,
+            return_tensors="pt"
+        ).to("cuda")
+
+        # Generate translation
+        outputs = model.generate(**inputs)
+        assamese_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        # Cleanup
+        del model, tokenizer, inputs, outputs
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        return {"translated_text": assamese_text}, 200
+
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+# Endpoint 1: Translate English to Assamese
+@app.route('/translate/english-to-assamese', methods=['POST'])
+def translate_english_to_assamese_v2():
+    data = request.get_json()
+    if not data or 'text' not in data:
+        return "Missing text parameter", 400
+
+    english_text = data['text']
+
+    try:
+        model_path = "./models/Bhasashift-v2/english-to-assamese-translator/model"
+        tokenizer_path = "./models/Bhasashift-v2/english-to-assamese-translator/tokenizer"
+
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path).to("cuda")
+
+        inputs = tokenizer(
+            english_text,
+            max_length=256,
+            truncation=True,
+            return_tensors="pt"
+        ).to("cuda")
+
+        outputs = model.generate(**inputs)
+        assamese_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        del model, tokenizer, inputs, outputs
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        return {"translated_text": assamese_text}, 200
+
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+# Endpoint 2: Translate Assamese to English
+@app.route('/translate/assamese-to-english', methods=['POST'])
+def translate_assamese_to_english_v2():
+    data = request.get_json()
+    if not data or 'text' not in data:
+        return "Missing text parameter", 400
+
+    assamese_text = data['text']
+
+    try:
+        model_path = "./models/Bhasashift-v2/assamese-to-english-translator/model"
+        tokenizer_path = "./models/Bhasashift-v2/assamese-to-english-translator/tokenizer"
+
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path).to("cuda")
+
+        inputs = tokenizer(
+            assamese_text,
+            max_length=256,
+            truncation=True,
+            return_tensors="pt"
+        ).to("cuda")
+
+        outputs = model.generate(**inputs)
+        english_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        del model, tokenizer, inputs, outputs
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        return {"translated_text": english_text}, 200
+
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+# Endpoint 3: Generate Image in Assamese
+@app.route('/generate/image/assamese', methods=['POST'])
+def generate_image_assamese():
+    data = request.get_json()
+    if not data or 'text' not in data:
+        return "Missing text parameter", 400
+
+    assamese_text = data['text']
+
+    try:
+        # Step 1: Translate Assamese to English
+        model_path = "./models/Bhasashift-v2/assamese-to-english-translator/model"
+        tokenizer_path = "./models/Bhasashift-v2/assamese-to-english-translator/tokenizer"
+
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path).to("cuda")
+
+        inputs = tokenizer(
+            assamese_text,
+            max_length=256,
+            truncation=True,
+            return_tensors="pt"
+        ).to("cuda")
+
+        outputs = model.generate(**inputs)
+        english_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        del model, tokenizer, inputs, outputs
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        # Step 2: Generate Image using Stable Diffusion
+        model_path = "./models/stable-diffusion-2-1"
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_path,
+            torch_dtype=torch.float16,
+            variant="fp16",
+            safety_checker=None,
+            requires_safety_checker=False,
+            local_files_only=True
+        ).to("cuda")
+
+        pipe.enable_attention_slicing(1)
+        pipe.enable_sequential_cpu_offload()
+        pipe.enable_model_cpu_offload()
+
+        generator = torch.Generator(device="cuda").manual_seed(42)
+        image = pipe(
+            prompt=english_text,
+            num_inference_steps=20,
+            guidance_scale=7.5,
+            height=384,
+            width=384,
+            generator=generator
+        ).images[0]
+
+        img_io = io.BytesIO()
+        image.save(img_io, 'PNG')
+        img_io.seek(0)
+
+        del pipe, image
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        return send_file(img_io, mimetype='image/png')
+
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+# Endpoint 4: Image Caption in Assamese
+@app.route('/caption/image/assamese', methods=['POST'])
+def caption_image_assamese():
+    if 'file' not in request.files:
+        return "Missing image file", 400
+
+    image_file = request.files['file']
+    image = Image.open(image_file.stream)
+
+    try:
+        # Step 1: Generate English Caption using Hugging Face's hosted model
+        import requests
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG")
+        buffered.seek(0)
+
+        response = requests.post(
+            "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning",
+            headers={"Authorization": "Bearer hf_anon"},  # No API key required for basic usage
+            files={"file": buffered}
+        )
+
+        if response.status_code != 200:
+            return {"error": response.text}, response.status_code
+
+        english_caption = response.json().get("generated_text", "No caption generated")
+
+        # Step 2: Translate English Caption to Assamese
+        model_path = "./models/Bhasashift-v2/english-to-assamese-translator/model"
+        tokenizer_path = "./models/Bhasashift-v2/english-to-assamese-translator/tokenizer"
+
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path).to("cuda")
+
+        inputs = tokenizer(
+            english_caption,
+            max_length=256,
+            truncation=True,
+            return_tensors="pt"
+        ).to("cuda")
+
+        outputs = model.generate(**inputs)
+        assamese_caption = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        del model, tokenizer, inputs, outputs
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        return {"caption": assamese_caption}, 200
+
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+# Endpoint 5: Gemini API with Assamese Prompts
+
+# Configure Gemini with your API key (store this securely in environment variables)
