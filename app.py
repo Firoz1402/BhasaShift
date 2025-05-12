@@ -3,7 +3,7 @@ import gc
 import torch
 from flask import Flask, request, send_file
 from PIL import Image
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, VisionEncoderDecoderModel, ViTImageProcessor, BlipForConditionalGeneration
 from diffusers import StableDiffusionPipeline
 from diffusers.utils import logging
 app = Flask(__name__)
@@ -305,22 +305,24 @@ def caption_image_assamese():
     image = Image.open(image_file.stream)
 
     try:
-        # Step 1: Generate English Caption using Hugging Face's hosted model
-        import requests
-        buffered = io.BytesIO()
-        image.save(buffered, format="JPEG")
-        buffered.seek(0)
+        # Step 1: Generate English Caption using BLIP model
+        caption_model_path = "./models/blip-image-captioning"
 
-        response = requests.post(
-            "https://api-inference.huggingface.co/models/nlpconnect/vit-gpt2-image-captioning",
-            headers={"Authorization": "Bearer hf_anon"},  # No API key required for basic usage
-            files={"file": buffered}
-        )
+        # Load the BLIP model and processor
+        caption_model = BlipForConditionalGeneration.from_pretrained(caption_model_path).to("cuda")
+        caption_processor = ViTImageProcessor.from_pretrained(caption_model_path)
 
-        if response.status_code != 200:
-            return {"error": response.text}, response.status_code
+        # Load the tokenizer explicitly
+        caption_tokenizer = AutoTokenizer.from_pretrained(caption_model_path)
 
-        english_caption = response.json().get("generated_text", "No caption generated")
+        # Preprocess the image
+        pixel_values = caption_processor(images=image, return_tensors="pt").pixel_values.to("cuda")
+
+        # Generate caption using BLIP
+        output_ids = caption_model.generate(pixel_values)
+        english_caption = caption_tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        print("English Caption:")
+        print(english_caption)
 
         # Step 2: Translate English Caption to Assamese
         model_path = "./models/Bhasashift-v2/english-to-assamese-translator/model"
