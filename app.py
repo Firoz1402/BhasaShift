@@ -2,11 +2,15 @@ import io
 import gc
 import torch
 from flask import Flask, request, send_file
+from flask_cors import CORS
 from PIL import Image
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, VisionEncoderDecoderModel, ViTImageProcessor, BlipForConditionalGeneration
 from diffusers import StableDiffusionPipeline
 from diffusers.utils import logging
 app = Flask(__name__)
+
+# Enable CORS for the Flask app
+CORS(app)
 
 def translate_assamese_to_english(assamese_text):
     # Load translation components

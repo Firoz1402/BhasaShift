@@ -11,3 +11,4 @@ datasets
 accelerate
 diffusers
 transformers
+flask-cors
