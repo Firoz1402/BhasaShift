@@ -286,15 +286,19 @@ def generate_image_assamese():
             generator=generator
         ).images[0]
 
+        # Convert image to bytes
         img_io = io.BytesIO()
         image.save(img_io, 'PNG')
         img_io.seek(0)
+
+        # Encode the image as a blob
+        image_blob = img_io.getvalue()
 
         del pipe, image
         torch.cuda.empty_cache()
         gc.collect()
 
-        return send_file(img_io, mimetype='image/png')
+        return {"image_blob": image_blob.hex()}, 200
 
     except Exception as e:
         return {"error": str(e)}, 500
