@@ -349,5 +349,80 @@ def caption_image_assamese():
         return {"error": str(e)}, 500
 
 # Endpoint 5: Gemini API with Assamese Prompts
+@app.route('/gemini/assamese', methods=['POST'])
+def gemini_assamese():
+    data = request.get_json()
+    if not data or 'text' not in data:
+        return "Missing text parameter", 400
 
-# Configure Gemini with your API key (store this securely in environment variables)
+    assamese_prompt = data['text']
+
+    try:
+        # Step 1: Translate Assamese to English
+        model_path = "./models/Bhasashift-v2/assamese-to-english-translator/model"
+        tokenizer_path = "./models/Bhasashift-v2/assamese-to-english-translator/tokenizer"
+
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path).to("cuda")
+
+        inputs = tokenizer(
+            assamese_prompt,
+            max_length=256,
+            truncation=True,
+            return_tensors="pt"
+        ).to("cuda")
+
+        outputs = model.generate(**inputs)
+        english_prompt = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        del model, tokenizer, inputs, outputs
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        # Step 2: Call Gemini 2.0 Flash API
+        import requests
+
+        gemini_api_url = "https://gemini-api.example.com/v1/generate"  # Replace with the actual API endpoint
+        gemini_api_key = "your_gemini_api_key"  # Replace with your actual API key
+
+        headers = {
+            "Authorization": f"Bearer {gemini_api_key}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.post(gemini_api_url, json={"prompt": english_prompt}, headers=headers)
+        response_data = response.json()
+
+        if response.status_code != 200:
+            return {"error": response_data.get("error", "Unknown error")}, response.status_code
+
+        gemini_response = response_data.get("response", "")
+
+        # Step 3: Translate Gemini Response to Assamese
+        model_path = "./models/Bhasashift-v2/english-to-assamese-translator/model"
+        tokenizer_path = "./models/Bhasashift-v2/english-to-assamese-translator/tokenizer"
+
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path).to("cuda")
+
+        inputs = tokenizer(
+            gemini_response,
+            max_length=256,
+            truncation=True,
+            return_tensors="pt"
+        ).to("cuda")
+
+        outputs = model.generate(**inputs)
+        assamese_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        del model, tokenizer, inputs, outputs
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        return {"response": assamese_response}, 200
+
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
