@@ -94,71 +94,6 @@ def generate_image_from_text(text):
         torch.cuda.empty_cache()
         gc.collect()
 
-@app.route('/generate/image/assamese', methods=['POST'])
-def handle_request():
-    # Get input text
-    data = request.get_json()
-    if not data or 'text' not in data:
-        return "Missing text parameter", 400
-    
-    try:
-        # Step 1: Translate text
-        translated_text = translate_assamese_to_english(data['text'])
-        
-        # Step 2: Generate image
-        generated_image = generate_image_from_text(translated_text)
-        
-        # Convert image to bytes
-        img_io = io.BytesIO()
-        generated_image.save(img_io, 'PNG')
-        img_io.seek(0)
-        
-        return send_file(img_io, mimetype='image/png')
-    
-    except RuntimeError as e:
-        if 'CUDA out of memory' in str(e):
-            return "Insufficient GPU memory - try a shorter prompt", 500
-        return f"Error: {str(e)}", 500
-    except Exception as e:
-        return f"Error: {str(e)}", 500
-
-@app.route('/translate/english-to-assamese-old', methods=['POST'])
-def translate_english_to_assamese():
-    # Get input text
-    data = request.get_json()
-    if not data or 'text' not in data:
-        return "Missing text parameter", 400
-
-    english_text = data['text']
-
-    try:
-        # Load translation components
-        model_path = "./models/Bhasashift-v1/final-model"
-        tokenizer = AutoTokenizer.from_pretrained("./models/Bhasashift-v1/final-model-tokeniser")
-        model = AutoModelForSeq2SeqLM.from_pretrained(model_path).to("cuda")
-
-        # Process text
-        inputs = tokenizer(
-            english_text,
-            max_length=256,
-            truncation=True,
-            return_tensors="pt"
-        ).to("cuda")
-
-        # Generate translation
-        outputs = model.generate(**inputs)
-        assamese_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-        # Cleanup
-        del model, tokenizer, inputs, outputs
-        torch.cuda.empty_cache()
-        gc.collect()
-
-        return {"translated_text": assamese_text}, 200
-
-    except Exception as e:
-        return {"error": str(e)}, 500
-
 # Endpoint 1: Translate English to Assamese
 @app.route('/translate/english-to-assamese', methods=['POST'])
 def translate_english_to_assamese_v2():
@@ -260,6 +195,10 @@ def generate_image_assamese():
         torch.cuda.empty_cache()
         gc.collect()
 
+        # Add a static prompt to the text from the request
+        static_prompt = "You are a professional artist. Create a real world like image based on the following description:"
+        combined_prompt = f"{static_prompt} {english_text}"
+
         # Step 2: Generate Image using Stable Diffusion
         model_path = "./models/stable-diffusion-2-1"
 
@@ -278,7 +217,7 @@ def generate_image_assamese():
 
         generator = torch.Generator(device="cuda").manual_seed(42)
         image = pipe(
-            prompt=english_text,
+            prompt=combined_prompt,
             num_inference_steps=20,
             guidance_scale=7.5,
             height=384,
@@ -291,14 +230,11 @@ def generate_image_assamese():
         image.save(img_io, 'PNG')
         img_io.seek(0)
 
-        # Encode the image as a blob
-        image_blob = img_io.getvalue()
-
         del pipe, image
         torch.cuda.empty_cache()
         gc.collect()
 
-        return {"image_blob": image_blob.hex()}, 200
+        return send_file(img_io, mimetype='image/png')
 
     except Exception as e:
         return {"error": str(e)}, 500

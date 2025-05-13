@@ -3,6 +3,7 @@ import requests
 import os
 from dotenv import load_dotenv
 from google import genai
+from flask_cors import CORS
 
 # Load environment variables
 load_dotenv()
@@ -13,6 +14,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Initialize Flask app
 app = Flask(__name__)
+CORS(app)
 
 @app.route('/process/assamese', methods=['POST'])
 def process_assamese():
@@ -34,7 +36,7 @@ def process_assamese():
         english_text = response.json().get("translated_text")
         print(english_text)
         # Step 3: Use Gemini API with English text
-        gemini_prompt = f"You are going to get a prompt that is translated from assamese to english. Try to understand the prompt and respond according to it. Keep the responses short, within 20 words. Be clear and do not use hard english words. Here is the translated    prompt that you will respond to :{english_text}"
+        gemini_prompt = f"You are going to get a prompt that is translated from assamese to english. Try to understand the prompt and respond according to it. Keep the responses short and straigthforward under 30 words. Be clear and do not use hard english words. Here is the translated prompt that you will respond to :{english_text}"
         gemini_response = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=gemini_prompt
@@ -61,4 +63,4 @@ def process_assamese():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=6000)
+    app.run(host="0.0.0.0", port=6500)
